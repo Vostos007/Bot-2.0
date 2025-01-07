@@ -1,0 +1,18 @@
+[Unit]
+Description=Notion Telegram Bot
+After=network.target
+
+[Service]
+Type=simple
+User=botuser
+WorkingDirectory=/path/to/bot
+Environment=NOTION_TOKEN=your_token
+Environment=DATABASE_ID=your_db_id
+Environment=TELEGRAM_TOKEN=your_token
+Environment=ADMIN_ID=your_admin_id
+ExecStart=/bin/bash start_bot.sh
+Restart=always
+RestartSec=10
+
+[Install]
+WantedBy=multi-user.target
