@@ -1,86 +1,77 @@
-"""Optimized Notion service with token validation"""
+"""Notion service with connection pooling and user isolation"""
 
 import logging
 import asyncio
-import re
 from typing import Dict, List, Optional
 from notion_client import Client
 
 logger = logging.getLogger(__name__)
 
-class NotionTokenError(Exception):
-    """Raised when Notion token is invalid"""
-    pass
-
 class NotionService:
     def __init__(self, token: str, database_id: str):
-        # Validate token and init client
-        if not self._validate_token(token):
-            raise NotionTokenError(
-                "Invalid Notion token. "
-                "Please check your token in https://www.notion.so/my-integrations"
-            )
-            
         self.client = Client(auth=token)
         self.database_id = self._validate_database_id(database_id)
-        self._last_request = 0
+        self._connection_pool = {}
         self._min_request_interval = 0.34  # ~3 requests per second
-
-    def _validate_token(self, token: str) -> bool:
-        """Validates Notion API token format"""
-        if not token or len(token) < 10:
-            return False
-        return True
-    
+        
     def _validate_database_id(self, database_id: str) -> str:
         """Validates and formats database ID"""
         formatted_id = database_id.replace('-', '')
-        if not re.match(r'^[a-zA-Z0-9]{32}$', formatted_id):
+        if len(formatted_id) != 32:
             raise ValueError(
-                "Invalid database ID format. ID should be 32 characters long "
-                "(excluding hyphens)."
+                "Invalid database ID format. ID should be 32 characters"
             )
         return formatted_id
+        
+    async def get_user_connection(self, user_id: int) -> Dict:
+        """Get or create connection for user with rate limiting"""
+        if user_id not in self._connection_pool:
+            self._connection_pool[user_id] = {
+                'client': Client(auth=self.client.auth),
+                'last_request': 0,
+                'tasks_cache': {}
+            }
+        return self._connection_pool[user_id]
 
-    async def test_connection(self) -> bool:
-        """Tests the API connection and token validity"""
-        try:
-            await self._wait_for_rate_limit()
-            await self.client.databases.retrieve(self.database_id)
-            return True
-        except Exception as e:
-            logger.error(f"Failed to connect to Notion: {e}")
-            return False
-            
-    async def _wait_for_rate_limit(self):
-        """Simple rate limiting for Notion API"""
+    async def _wait_for_rate_limit(self, user_id: int):
+        """Per-user rate limiting"""
+        conn = await self.get_user_connection(user_id)
         now = asyncio.get_event_loop().time()
-        time_since_last = now - self._last_request
+        time_since_last = now - conn['last_request']
+        
         if time_since_last < self._min_request_interval:
             await asyncio.sleep(self._min_request_interval - time_since_last)
-        self._last_request = now
+        conn['last_request'] = now
 
-    async def query_database(self, limit: int = 10, filter_conditions: Optional[Dict] = None) -> List[Dict]:
-        """Query database with rate limiting and error handling"""
-        await self._wait_for_rate_limit()
-        
+    async def query_database(self, user_id: int, limit: int = 10, filter_conditions: Optional[Dict] = None) -> List[Dict]:
+        """Query database with user isolation and error handling"""
         try:
-            response = await self.client.databases.query(
+            await self._wait_for_rate_limit(user_id)
+            conn = await self.get_user_connection(user_id)
+            
+            response = await conn['client'].databases.query(
                 database_id=self.database_id,
                 filter=filter_conditions,
                 page_size=limit
             )
-            return response.get("results", [])
+            
+            # Cache results for user
+            conn['tasks_cache'] = {
+                task['id']: task for task in response.get("results", [])
+            }
+            
+            return list(conn['tasks_cache'].values())
             
         except Exception as e:
-            logger.error(f"Failed to query database: {e}")
+            logger.error(f"Failed to query database for user {user_id}: {e}")
             return []
 
-    async def create_task(self, title: str, status: Optional[str] = None) -> Optional[Dict]:
-        """Create task with rate limiting"""
-        await self._wait_for_rate_limit()
-        
+    async def create_task(self, user_id: int, title: str, status: Optional[str] = None) -> Optional[Dict]:
+        """Create task with user isolation"""
         try:
+            await self._wait_for_rate_limit(user_id)
+            conn = await self.get_user_connection(user_id)
+            
             properties = {
                 "Title": {"title": [{"text": {"content": title}}]},
             }
@@ -88,12 +79,47 @@ class NotionService:
             if status:
                 properties["Status"] = {"status": {"name": status}}
                 
-            response = await self.client.pages.create(
+            response = await conn['client'].pages.create(
                 parent={"database_id": self.database_id},
                 properties=properties
             )
+            
+            # Update user's cache
+            if response:
+                conn['tasks_cache'][response['id']] = response
+                
             return response
             
         except Exception as e:
-            logger.error(f"Failed to create task: {e}")
+            logger.error(f"Failed to create task for user {user_id}: {e}")
             return None
+            
+    async def update_task(self, user_id: int, task_id: str, properties: Dict) -> Optional[Dict]:
+        """Update task with user validation"""
+        try:
+            await self._wait_for_rate_limit(user_id)
+            conn = await self.get_user_connection(user_id)
+            
+            # Verify task exists in user's cache
+            if task_id not in conn['tasks_cache']:
+                return None
+                
+            response = await conn['client'].pages.update(
+                page_id=task_id,
+                properties=properties
+            )
+            
+            # Update cache
+            if response:
+                conn['tasks_cache'][task_id] = response
+                
+            return response
+            
+        except Exception as e:
+            logger.error(f"Failed to update task {task_id} for user {user_id}: {e}")
+            return None
+
+    def cleanup_user(self, user_id: int):
+        """Clean up user's connection and cache"""
+        if user_id in self._connection_pool:
+            del self._connection_pool[user_id]
