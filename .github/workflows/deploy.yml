@@ -3,6 +3,11 @@ name: Deploy to Server
 on:
   push:
     branches: [ main ]
+    paths:
+      - '**.py'
+      - 'requirements.txt'
+      - 'config/**'
+      - '.env*'
 
 jobs:
   deploy:
@@ -19,6 +24,3 @@ jobs:
           script: |
             cd /opt/telegram-bot
             git pull origin main
-        env:
-          ACTIONS_STEP_DEBUG: false
-          ACTIONS_RUNNER_DEBUG: false
