@@ -1,95 +1,80 @@
-# Bot-2.0
+# Telegram Bot with Notion Integration
 
-Telegram бот для управления задачами в Notion с оптимизированным потреблением ресурсов.
+A Telegram bot that integrates with Notion for task management and monitoring.
 
-🚀 **Тестирование автоматического деплоя**
+## Project Structure
 
-## Особенности
-- Низкое потребление CPU
-- Кэширование запросов
-- Защита от перегрузок
-- Простой интерфейс
-- Автоматический деплой
+```
+telegram-bot/
+├── src/
+│   ├── api/          # API endpoints
+│   ├── services/     # Business logic services
+│   ├── utils/        # Utility functions
+│   └── main.py       # Application entry point
+├── config/           # Configuration files
+├── docs/            # Documentation
+├── tests/           # Test files
+├── scripts/         # Utility scripts
+├── logs/            # Application logs
+├── backups/         # Backup files
+├── .env             # Environment variables
+├── requirements.txt # Python dependencies
+└── start_bot.sh     # Bot startup script
+```
 
-## Установка
+## Setup
 
+1. Create and activate virtual environment:
 ```bash
-git clone https://github.com/Vostos007/Bot-2.0.git
-cd Bot-2.0
+python -m venv venv
+source venv/bin/activate  # On Unix/macOS
+```
+
+2. Install dependencies:
+```bash
 pip install -r requirements.txt
 ```
 
-## Настройка Notion API
-
-1. Создайте новую интеграцию:
-   - Перейдите на https://www.notion.so/my-integrations
-   - Нажмите "New integration"
-   - Заполните необходимые поля
-   - Скопируйте токен интеграции
-
-2. Настройте базу данных:
-   - Создайте новую базу данных в Notion или используйте существующую
-   - В настройках базы данных (⋮) выберите "Add connections"
-   - Добавьте созданную интеграцию
-   - Скопируйте ID базы данных из URL
-
-3. Установите переменные окружения:
+3. Configure environment variables:
 ```bash
-export NOTION_TOKEN='your_integration_token'
-export DATABASE_ID='your_database_id'
+cp .env.example .env
+# Edit .env with your credentials
 ```
 
-### Структура базы данных Notion
-База данных должна содержать следующие поля:
-- Title (type: title) - название задачи
-- Status (type: status) - статус задачи
+Required environment variables:
+- TELEGRAM_TOKEN
+- NOTION_TOKEN
+- DATABASE_ID
+- ADMIN_ID
 
-## Запуск
+## Running the Bot
 
+1. Start the bot:
 ```bash
-python main.py
+./start_bot.sh
 ```
 
-## Использование
+2. Monitor the bot:
+- Check logs in `logs/` directory
+- Use monitoring endpoints at `/monitoring`
 
-1. Начало работы:
-   - Отправьте `/start` боту
-   - Используйте кнопки меню для навигации
+## Development
 
-2. Основные команды:
-   - 📋 Задачи - просмотр списка задач
-   - ➕ Новая - создание новой задачи
+- Follow PEP 8 style guide
+- Write tests for new features
+- Update documentation as needed
+- Use meaningful commit messages
 
-## Техническая документация
+## Backup
 
-- [API References](docs/API_REFERENCES.md) - документация по API
-- Rate limits и другие ограничения
-- Форматы данных
+Backups are automatically created in the `backups/` directory.
 
-## Оптимизация
+## Monitoring
 
-- Кэширование (TTL = 5 минут)
-- Rate limiting (3 req/sec)
-- Пагинация (10 задач)
-- Асинхронная обработка
+Access monitoring endpoints at:
+- Health check: `/monitoring/health`
+- Status: `/monitoring/status`
 
-## Логирование
+## License
 
-Логи сохраняются с информацией о времени, уровне и сообщении:
-```
-2024-01-07 12:34:56 - INFO - Bot started
-```
-
-## Решение проблем
-
-Если возникают ошибки:
-1. Проверьте токены и права доступа
-2. Убедитесь в правильной структуре базы данных
-3. Проверьте логи ошибок
-
-## Лицензия
-
-MIT
-
----
-✅ Автоматический деплой настроен и работает
+MIT License
