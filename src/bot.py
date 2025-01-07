@@ -9,8 +9,8 @@ from telegram import Update, InlineKeyboardButton, InlineKeyboardMarkup
 from telegram.ext import Application, CommandHandler, CallbackQueryHandler, ContextTypes
 from cachetools import TTLCache
 
-from .config import BotConfig, UserManager
-from .notion_service import NotionService
+from config import BotConfig, UserManager
+from notion_service import NotionService
 
 logger = logging.getLogger(__name__)
 
