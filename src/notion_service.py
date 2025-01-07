@@ -1,61 +1,61 @@
-"""Notion API service with rate limiting and error handling"""
+"""Optimized Notion service"""
 
-import asyncio
 import logging
-from typing import Dict, Optional
+import asyncio
+from typing import Dict, List, Optional
 from notion_client import Client
 
-class NotionError(Exception):
-    """Base class for Notion API errors"""
-    pass
-
-class RateLimitError(NotionError):
-    """Raised when rate limit is exceeded"""
-    pass
+logger = logging.getLogger(__name__)
 
 class NotionService:
     def __init__(self, token: str, database_id: str):
         self.client = Client(auth=token)
         self.database_id = database_id
-        self._rate_limit_remaining = 90
+        self._last_request = 0
+        self._min_request_interval = 0.34  # ~3 requests per second
         
-    async def create_task(self, title: str, assignee_id: Optional[str] = None, status: Optional[str] = None):
-        """Create task with rate limiting"""
-        if self._rate_limit_remaining < 1:
-            await asyncio.sleep(60)
-            
-        try:
-            task = await self.client.pages.create(
-                parent={"database_id": self.database_id},
-                properties={
-                    "Name": {"title": [{"text": {"content": title}}]},
-                    **({
-                        "Assignee": {"people": [{"id": assignee_id}]}
-                    } if assignee_id else {}),
-                    **({
-                        "Status": {"status": {"name": status}}
-                    } if status else {})
-                }
-            )
-            return task
-        except Exception as e:
-            logging.error(f"Failed to create task: {e}")
-            raise NotionError(str(e))
-            
-    async def query_database(self, filter_conditions=None):
-        """Query database with rate limiting"""
-        if self._rate_limit_remaining < 1:
-            await asyncio.sleep(60)
-            
+    async def _wait_for_rate_limit(self):
+        """Simple rate limiting for Notion API"""
+        now = asyncio.get_event_loop().time()
+        time_since_last = now - self._last_request
+        if time_since_last < self._min_request_interval:
+            await asyncio.sleep(self._min_request_interval - time_since_last)
+        self._last_request = now
+
+    async def query_database(self, limit: int = 10, filter_conditions: Optional[Dict] = None) -> List[Dict]:
+        """Query database with rate limiting and error handling"""
+        await self._wait_for_rate_limit()
+        
         try:
             response = await self.client.databases.query(
                 database_id=self.database_id,
-                filter=filter_conditions
+                filter=filter_conditions,
+                page_size=limit
             )
-            self._rate_limit_remaining = int(
-                response.get("x-rate-limit-remaining", 90)
+            return response.get("results", [])
+            
+        except Exception as e:
+            logger.error(f"Failed to query database: {e}")
+            return []
+
+    async def create_task(self, title: str, status: Optional[str] = None) -> Optional[Dict]:
+        """Create task with rate limiting"""
+        await self._wait_for_rate_limit()
+        
+        try:
+            properties = {
+                "Title": {"title": [{"text": {"content": title}}]},
+            }
+            
+            if status:
+                properties["Status"] = {"status": {"name": status}}
+                
+            response = await self.client.pages.create(
+                parent={"database_id": self.database_id},
+                properties=properties
             )
             return response
+            
         except Exception as e:
-            logging.error(f"Database query error: {e}")
-            return []
+            logger.error(f"Failed to create task: {e}")
+            return None
