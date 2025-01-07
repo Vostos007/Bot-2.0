@@ -1,0 +1,30 @@
+[Unit]
+Description=Telegram Notion Bot
+After=network.target
+Wants=network-online.target
+
+[Service]
+Type=simple
+User=root
+WorkingDirectory=/opt
+Environment=PYTHONPATH=/opt
+ExecStart=/usr/bin/python3 main.py
+Restart=always
+RestartSec=10
+
+# Логирование
+StandardOutput=append:/var/log/telegram-bot/bot.log
+StandardError=append:/var/log/telegram-bot/error.log
+
+# Ограничения ресурсов
+MemoryLimit=500M
+CPUQuota=50%
+
+# Безопасность
+NoNewPrivileges=yes
+ProtectSystem=full
+ProtectHome=yes
+PrivateTmp=yes
+
+[Install]
+WantedBy=multi-user.target
