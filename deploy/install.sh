@@ -1,23 +1,21 @@
 #!/bin/bash
 
-# Create directory for the bot
-sudo mkdir -p /opt/telegram-bot
+# Создаем необходимые директории
+mkdir -p /var/log/telegram-bot /opt/backups
+chmod 755 /var/log/telegram-bot /opt/backups
 
-# Clone repository
-cd /opt/telegram-bot
-[ ! -d "Bot-2.0" ] && git clone https://github.com/Vostos007/Bot-2.0.git
-cd Bot-2.0
+# Копируем файлы
+cp bot-control.sh /opt/
+cp update.sh /opt/
+cp telegram-bot.service /etc/systemd/system/
 
-# Create virtual environment
-python3 -m venv venv
-source venv/bin/activate
-pip install -r requirements.txt
+# Делаем скрипты исполняемыми
+chmod +x /opt/bot-control.sh /opt/update.sh
 
-# Setup systemd service
-sudo cp deploy/telegram-bot.service /etc/systemd/system/
-sudo systemctl daemon-reload
-sudo systemctl enable telegram-bot
-sudo systemctl start telegram-bot
+# Перезагружаем systemd и запускаем сервис
+systemctl daemon-reload
+systemctl enable telegram-bot
+systemctl start telegram-bot
 
-echo "Bot installed and started!"
-echo "Check status with: sudo systemctl status telegram-bot"
+# Проверяем статус
+/opt/bot-control.sh status
