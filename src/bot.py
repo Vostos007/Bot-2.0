@@ -1,15 +1,15 @@
-"""Optimized bot module"""
+"""Main bot module with user isolation"""
 
 import logging
 import asyncio
-from typing import Optional
+from typing import Dict, Optional
 import time
 
 from telegram import Update, InlineKeyboardButton, InlineKeyboardMarkup
 from telegram.ext import Application, CommandHandler, CallbackQueryHandler, ContextTypes
 from cachetools import TTLCache
 
-from .config import BotConfig
+from .config import BotConfig, UserManager
 from .notion_service import NotionService
 
 logger = logging.getLogger(__name__)
@@ -18,16 +18,35 @@ class NotionBot:
     def __init__(self, config: BotConfig):
         self.notion = NotionService(config.notion_token, config.database_id)
         self.config = config
+        self.user_manager = UserManager()
         
-        # Simple cache with 5 minute TTL
-        self.cache = TTLCache(maxsize=100, ttl=300)
+        # Per-user caches
+        self.user_caches: Dict[int, TTLCache] = {}
         
         # Rate limiting
         self.user_timestamps = {}
         self.rate_limit = 3  # requests per second
         
+    def get_user_cache(self, user_id: int) -> TTLCache:
+        if user_id not in self.user_caches:
+            self.user_caches[user_id] = TTLCache(maxsize=100, ttl=300)
+        return self.user_caches[user_id]
+        
+    async def check_access(self, update: Update) -> bool:
+        if not update.effective_user:
+            return False
+            
+        user_id = update.effective_user.id
+        if not self.user_manager.is_allowed(user_id):
+            await update.message.reply_text(
+                "У вас нет доступа к этому боту. "
+                "Обратитесь к администратору."
+            )
+            return False
+        return True
+
     async def _rate_limit_check(self, user_id: int) -> bool:
-        """Simple rate limiting"""
+        """Per-user rate limiting"""
         now = time.time()
         if user_id in self.user_timestamps:
             last_request = self.user_timestamps[user_id]
@@ -37,8 +56,8 @@ class NotionBot:
         return True
 
     async def start(self, update: Update, context: ContextTypes.DEFAULT_TYPE):
-        """Optimized start command handler"""
-        if not update.effective_user:
+        """Start command with access check"""
+        if not await self.check_access(update):
             return
             
         if not await self._rate_limit_check(update.effective_user.id):
@@ -57,66 +76,32 @@ class NotionBot:
             reply_markup=InlineKeyboardMarkup(keyboard)
         )
 
-    async def list_tasks(self, update: Update, context: ContextTypes.DEFAULT_TYPE):
-        """Optimized task listing with caching"""
-        if not update.callback_query or not update.effective_user:
+    async def admin_command(self, update: Update, context: ContextTypes.DEFAULT_TYPE):
+        """Admin commands handler"""
+        if not update.effective_user or update.effective_user.id != self.config.admin_id:
             return
             
-        if not await self._rate_limit_check(update.effective_user.id):
-            await update.callback_query.answer("Пожалуйста, подождите...")
+        command = update.message.text.split()
+        if len(command) < 2:
+            await update.message.reply_text("Использование: /admin [add_user|remove_user] [user_id]")
             return
-
-        # Try cache first
-        cache_key = f"tasks_{update.effective_user.id}"
-        cached_result = self.cache.get(cache_key)
+            
+        action, *args = command[1:]
         
-        if cached_result:
-            await update.callback_query.message.reply_text(cached_result)
-            return
-
-        # If not in cache, fetch with pagination
-        try:
-            tasks = await self.notion.query_database(limit=10)
-            
-            if not tasks:
-                await update.callback_query.message.reply_text("Задач пока нет")
-                return
+        if action == "add_user" and args:
+            try:
+                user_id = int(args[0])
+                self.user_manager.add_user(user_id)
+                await update.message.reply_text(f"Пользователь {user_id} добавлен")
+                logger.info(f"Admin added user {user_id}")
+            except ValueError:
+                await update.message.reply_text("Неверный формат ID")
                 
-            text = "📋 Последние задачи:\n\n"
-            for task in tasks:
-                status = task.get("properties", {}).get("Status", {}).get("status", {}).get("name", "Новая")
-                title = task.get("properties", {}).get("Title", {}).get("title", [{}])[0].get("text", {}).get("content", "Без названия")
-                text += f"- {title} [{status}]\n"
-                
-            # Cache the result
-            self.cache[cache_key] = text
-            
-            await update.callback_query.message.reply_text(text)
-            
-        except Exception as e:
-            logger.error(f"Error fetching tasks: {e}")
-            await update.callback_query.message.reply_text("Произошла ошибка при получении задач")
-
-    def run(self):
-        """Run the bot with optimizations"""
-        # Configure application with optimized settings
-        app = (
-            Application.builder()
-            .token(self.config.telegram_token)
-            .concurrent_updates(True)  # Enable concurrent updates
-            .build()
-        )
-
-        # Add handlers
-        app.add_handler(CommandHandler("start", self.start))
-        app.add_handler(CallbackQueryHandler(self.list_tasks, pattern="^tasks$"))
-        
-        # Set up error handling
-        app.add_error_handler(self._error_handler)
-        
-        # Run the bot
-        app.run_polling(allowed_updates=Update.ALL_TYPES)
-        
-    async def _error_handler(self, update: object, context: ContextTypes.DEFAULT_TYPE):
-        """Log errors"""
-        logger.error(f"Error: {context.error} with update {update}")
+        elif action == "remove_user" and args:
+            try:
+                user_id = int(args[0])
+                self.user_manager.remove_user(user_id)
+                await update.message.reply_text(f"Пользователь {user_id} удален")
+                logger.info(f"Admin removed user {user_id}")
+            except ValueError:
+                await update.message.reply_text("Неверный формат ID")
