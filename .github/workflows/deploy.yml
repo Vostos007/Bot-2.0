@@ -34,7 +34,8 @@ jobs:
           username: ${{ secrets.SERVER_USERNAME }}
           key: ${{ secrets.SERVER_SSH_KEY }}
           script: |
-            cd /path/to/bot
+            cd /opt/telegram-bot/Bot-2.0
             git pull
+            source venv/bin/activate
             pip install -r requirements.txt
-            systemctl restart bot-service
+            sudo systemctl restart telegram-bot
