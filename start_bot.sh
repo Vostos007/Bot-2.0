@@ -1,26 +1,19 @@
 #!/bin/bash
 
-# Create logs directory
-LOG_DIR="logs"
-mkdir -p $LOG_DIR
+# Activate virtual environment if it exists
+if [ -d "venv" ]; then
+    source venv/bin/activate
+fi
 
-# Log file with timestamp
-LOG_FILE="$LOG_DIR/bot_$(date +%Y%m%d_%H%M%S).log"
+# Create necessary directories if they don't exist
+mkdir -p logs backups
 
-# Function to check status and restart
-check_and_restart() {
-    if ! pgrep -f "python main.py" > /dev/null; then
-        echo "$(date): Bot stopped, restarting..." >> "$LOG_FILE"
-        python main.py >> "$LOG_FILE" 2>&1 &
-    fi
-}
+# Check if .env file exists
+if [ ! -f .env ]; then
+    echo "Error: .env file not found. Please create one based on .env.example"
+    exit 1
+fi
 
-# Start bot
-echo "$(date): Starting bot..." >> "$LOG_FILE"
-python main.py >> "$LOG_FILE" 2>&1 &
-
-# Monitor every minute
-while true; do
-    check_and_restart
-    sleep 60
-done
+# Start the bot
+echo "Starting Telegram-Notion bot..."
+python src/main.py
