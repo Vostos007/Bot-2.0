@@ -18,24 +18,23 @@ class SystemMonitor:
     @staticmethod
     def get_bot_stats() -> Dict[str, Any]:
         return {
-            'active_users': 0,  # Replace with actual data
+            'active_users': 0,
             'messages_processed': 0,
             'errors_count': 0
         }
 
-@router.get("/health")
+@router.get('/health')
 async def health_check():
-    return {"status": "healthy"}
+    return {'status': 'healthy'}
 
-@router.get("/metrics")
+@router.get('/metrics')
 async def get_metrics():
     try:
         system_stats = SystemMonitor.get_system_stats()
         bot_stats = SystemMonitor.get_bot_stats()
-        
         return {
-            "system": system_stats,
-            "bot": bot_stats
+            'system': system_stats,
+            'bot': bot_stats
         }
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
