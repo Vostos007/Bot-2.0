@@ -1,15 +1,19 @@
-# Python
-__pycache__/
-*.py[cod]
-*$py.class
-venv/
 .env
-
-# Logs
+venv/
+__pycache__/
+*.pyc
+*.pyo
+*.pyd
+*.db
+*.sqlite3
+logs/
 *.log
-
-# IDE settings
-.vscode/
-.idea/
+*.bak
 *.swp
 *.swo
+.DS_Store
+.idea/
+.vscode/
+*.egg-info/
+dist/
+build/

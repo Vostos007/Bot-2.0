@@ -9,10 +9,20 @@ logger = logging.getLogger(__name__)
 
 class NotionService:
     def __init__(self, token: str, database_id: str):
-        self.client = Client(auth=token)
-        self.database_id = self._validate_database_id(database_id)
+        self.token = token
+        self.database_id = database_id
+        self.client = None
+        self._initialize_client()
         self._connection_pool = {}
         self._min_request_interval = 0.34  # ~3 requests per second
+        
+    def _initialize_client(self):
+        """Initialize Notion client"""
+        try:
+            self.client = Client(auth=self.token)
+        except Exception as e:
+            logger.error(f"Failed to initialize Notion client: {e}")
+            raise
         
     def _validate_database_id(self, database_id: str) -> str:
         """Validates and formats database ID"""
@@ -123,3 +133,52 @@ class NotionService:
         """Clean up user's connection and cache"""
         if user_id in self._connection_pool:
             del self._connection_pool[user_id]
+
+    async def get_tasks(self):
+        """Get tasks from Notion"""
+        try:
+            # Проверка подключения к Notion
+            if not self.client:
+                raise Exception("Notion client not initialized")
+            
+            # Проверка токена
+            if not self.token or not self.token.startswith(('secret_', 'ntn_')):
+                raise Exception("Invalid Notion token format")
+            
+            # Получение задач из базы данных
+            response = await self.client.databases.query(
+                database_id=self.database_id,
+                filter={
+                    "property": "Status",
+                    "select": {
+                        "does_not_equal": "Done"
+                    }
+                }
+            )
+            
+            # Логирование структуры ответа для отладки
+            logger.debug(f"Notion API response: {response}")
+            
+            tasks = []
+            for page in response.get("results", []):
+                # Проверка наличия обязательных полей
+                if "properties" not in page:
+                    logger.warning(f"Page missing properties: {page}")
+                    continue
+                    
+                if "Name" not in page["properties"]:
+                    logger.warning(f"Page missing Name property: {page}")
+                    continue
+                    
+                if "title" not in page["properties"]["Name"]:
+                    logger.warning(f"Name property missing title: {page}")
+                    continue
+                    
+                title = page["properties"]["Name"]["title"][0]["text"]["content"]
+                tasks.append(f"• {title}")
+                
+            return tasks
+            
+        except Exception as e:
+            logger.error(f"Failed to get tasks from Notion: {e}")
+            raise
